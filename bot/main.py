@@ -21,14 +21,25 @@ from bot.utils.rate_limit import RateLimiter
 async def setup_logging():
     level = getattr(logging, settings.logging.level.upper(), logging.INFO)
     logging.basicConfig(level=level, format="%(message)s")
+    # Toggle JSON renderer based on config to avoid pydantic field shadowing warning.
+    processors = [
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+    if settings.logging.json_logs:
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        processors.append(structlog.dev.ConsoleRenderer())
     structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(level),
     )
+
+
+async def init_db() -> None:
+    # Ensure tables exist before polling to avoid runtime errors on new deployments.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def command_setup(bot: Bot):
@@ -81,6 +92,7 @@ async def main():
     await command_setup(bot)
 
     await bot.delete_webhook(drop_pending_updates=True)
+    await init_db()
     await dp.start_polling(bot)
 
 
