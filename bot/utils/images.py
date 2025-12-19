@@ -9,7 +9,7 @@ import aiohttp
 import structlog
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, Message
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 logger = structlog.get_logger(__name__)
 
@@ -30,11 +30,16 @@ async def _fetch_url_bytes(
     timeout_s: int = 20,
     max_bytes: int = 15 * 1024 * 1024,
 ) -> bytes:
+    # Use a browser-ish UA and follow redirects to handle CDNs gracefully.
     timeout = aiohttp.ClientTimeout(total=timeout_s)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(url) as resp:
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; TelegramBot/1.0)"}
+    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with session.get(url, allow_redirects=True) as resp:
             resp.raise_for_status()
             data = await resp.read()
+            content_type = resp.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type or data.lstrip().startswith(b"<"):
+                raise ValueError(f"URL did not return an image: {content_type or 'unknown type'}")
             if len(data) > max_bytes:
                 raise ValueError(f"Image too large: {len(data)} bytes (limit {max_bytes})")
             return data
@@ -47,15 +52,37 @@ async def _read_source_async(source: ImageSource) -> tuple[bytes, str]:
             return data, source  # origin = URL
         path = Path(source)
         data = path.read_bytes()
+        # Treat text files that contain a URL as a URL source to avoid PIL errors.
+        if url := _maybe_extract_url_from_bytes(data):
+            fetched = await _fetch_url_bytes(url)
+            return fetched, url
         return data, str(path)
 
     if isinstance(source, BytesIO):
-        return source.getvalue(), "in-memory buffer"
+        data = source.getvalue()
+        if url := _maybe_extract_url_from_bytes(data):
+            fetched = await _fetch_url_bytes(url)
+            return fetched, url
+        return data, "in-memory buffer"
 
     if isinstance(source, bytes):
+        if url := _maybe_extract_url_from_bytes(source):
+            fetched = await _fetch_url_bytes(url)
+            return fetched, url
         return source, "raw bytes"
 
     raise TypeError(f"Unsupported image source type: {type(source)!r}")
+
+
+def _maybe_extract_url_from_bytes(raw: bytes) -> str | None:
+    """Return URL string if the raw bytes decode to a plain-text URL."""
+    try:
+        text = raw.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return None
+    if not text:
+        return None
+    return text if _is_url(text) else None
 
 
 def prepare_image_for_telegram_from_bytes(
@@ -65,7 +92,14 @@ def prepare_image_for_telegram_from_bytes(
     format: str = "JPEG",
     filename: str = "image.jpg",
 ) -> tuple[BufferedInputFile, Mapping[str, Any]]:
-    with Image.open(BytesIO(raw)) as img:
+    try:
+        img = Image.open(BytesIO(raw))
+    except UnidentifiedImageError as exc:
+        preview = raw[:80]
+        # Provide origin and byte preview to help debug broken/HTML responses.
+        raise ValueError(f"Invalid image data from {origin}: {preview!r}") from exc
+
+    with img:
         # Fix common rotation issues due to EXIF orientation
         img = ImageOps.exif_transpose(img)
 
@@ -128,11 +162,21 @@ async def send_photo_with_retry(
     reply_markup: Any | None = None,
     parse_mode: str | None = None,
 ):
-    raw, origin = await _read_source_async(source)
-
-    photo, meta = prepare_image_for_telegram_from_bytes(
-        raw, origin=origin, format="JPEG", filename="image.jpg"
-    )
+    try:
+        raw, origin = await _read_source_async(source)
+        photo, meta = prepare_image_for_telegram_from_bytes(
+            raw, origin=origin, format="JPEG", filename="image.jpg"
+        )
+    except ValueError as exc:
+        logger.warning("invalid_image_source_fallback", error=str(exc), origin=str(source))
+        if source != IMG_URL:
+            # Fall back to the known-good URL when the provided image is not valid.
+            raw, origin = await _read_source_async(IMG_URL)
+            photo, meta = prepare_image_for_telegram_from_bytes(
+                raw, origin=origin, format="JPEG", filename="image.jpg"
+            )
+        else:
+            raise
 
     try:
         return await _answer_photo(
