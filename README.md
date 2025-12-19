@@ -40,3 +40,12 @@ See `systemd.service.example` for a service template.
 
 ## Data
 Sample data for truth/dare/puzzles/riddles/badwords live in `bot/data/`.
+
+## Automated Leaderboards
+- Every 6 hours (00:00, 06:00, 12:00, 18:00 Asia/Kolkata) the bot posts an italic-only HTML leaderboard per active group.
+- Post includes Top Users, Top Clans, Top Groups, and quick stats (6h message volume, most used action, most active user).
+- Ranking favors higher points first, then message counts; stable ordering uses identifiers to break ties.
+- Admin controls:
+  - `/leaderboard_on` — enable scheduled posts in the group.
+  - `/leaderboard_off` — disable scheduled posts.
+  - `/leaderboard_now` — trigger an immediate leaderboard snapshot.
