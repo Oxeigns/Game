@@ -31,7 +31,7 @@ Production-ready economy game bot for Telegram groups and DMs using **python-tel
    ```
 
 ## Heroku Deployment (Polling)
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Oxeigns/Reaction)
 1. Install Heroku CLI and login.
 2. Create app and set config vars:
    ```bash
