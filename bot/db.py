@@ -37,11 +37,14 @@ async def create_indexes():
             raise
 
     await asyncio.gather(
+        # Users
         create_index_safe(database.users, [("user_id", 1)], unique=True),
         create_index_safe(database.users, [("balance", -1)], name="balance_desc"),
         create_index_safe(database.users, [("kills", -1)], name="kills_desc"),
         create_index_safe(database.users, [("premium", 1)]),
+        # Groups
         create_index_safe(database.groups, [("group_id", 1)], unique=True),
+        # Transaction logs
         create_index_safe(database.tx_logs, [("timestamp", -1)], name="ts_desc"),
         create_index_safe(
             database.tx_logs,
@@ -64,8 +67,9 @@ async def create_indexes():
                 ("timestamp", -1),
             ],
         ),
-        create_index_safe(database.bot_settings, [("_id", 1)], unique=True),
+        # Settings (uses MongoDB's built-in _id index; no manual index needed)
         create_index_safe(database.groups_registry, [("group_id", 1)], unique=True),
+        # Broadcast jobs
         create_index_safe(database.broadcast_jobs, [("job_id", 1)], unique=True),
         create_index_safe(database.broadcast_jobs, [("status", 1)]),
         create_index_safe(database.broadcast_jobs, [("started_at", -1)], name="started_desc"),
