@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import random
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,6 +10,7 @@ from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, Time
 from telegram.ext import ContextTypes
 
 from . import config
+from .services.ui import box_card, action_keyboard
 
 
 def format_money(amount: int) -> str:
@@ -25,29 +25,13 @@ def safe_mention(username: Optional[str], user_id: int) -> str:
     return f"@{username}" if username else f"ID: {user_id}"
 
 
-def box_card(title: str, lines: list[str]) -> str:
-    sanitized = []
-    for ln in lines:
-        ln = ln.replace("`", "'")
-        if len(ln) > 48:
-            ln = ln[:45] + "…"
-        sanitized.append(ln)
-    body = "\n".join(["┃ " + ln for ln in sanitized])
-    card = f"```
-┏━━━━━━━━━━━━━━━━━━━━━━
-┃ {title}
-┣━━━━━━━━━━━━━━━━━━━━━━
-{body}
-┗━━━━━━━━━━━━━━━━━━━━━━
-```"
-    return card
-
-
-def action_keyboard(buttons: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(buttons)
-
-
-async def safe_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, keyboard: InlineKeyboardMarkup | None = None, edit: bool = False):
+async def safe_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    keyboard: InlineKeyboardMarkup | None = None,
+    edit: bool = False,
+):
     try:
         if edit and update.callback_query:
             await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
@@ -88,7 +72,10 @@ def utcnow() -> datetime:
 
 
 async def ensure_dm(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    button = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("✅ Enable DM", url=url)]]
+    button = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Enable DM", url=url)]])
+    await safe_reply(
+        update,
+        context,
+        box_card("DM Needed", ["ℹ️ Can't DM user. Ask them to /start me in DM.", "Next: Tap Enable DM"]),
+        keyboard=button,
     )
-    await safe_reply(update, context, box_card("DM Needed", ["ℹ️ Can't DM user. Ask them to /start me in DM.", "Next: Tap Enable DM"]), keyboard=button)

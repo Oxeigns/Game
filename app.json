@@ -1,0 +1,30 @@
+{
+  "name": "Telegram Group Economy Game Bot",
+  "description": "Async python-telegram-bot economy game with MongoDB and admin panel.",
+  "repository": "https://example.com/repo",
+  "keywords": ["telegram", "bot", "economy", "game", "python"],
+  "env": {
+    "BOT_TOKEN": {"description": "Telegram bot token", "required": true},
+    "MONGO_URI": {"description": "MongoDB URI", "required": true},
+    "DB_NAME": {"description": "Database name", "required": true},
+    "OWNER_ID": {"description": "Owner user id", "required": true},
+    "LOGS_GROUP_ID": {"description": "Logs group id", "required": false},
+    "SUDO_USERS": {"description": "Comma separated sudo ids", "required": false},
+    "PANEL_IMAGE_URL": {"description": "Optional panel header image", "required": false},
+    "DEFAULT_ECONOMY_ENABLED": {"description": "Economy enabled by default", "value": "true"},
+    "MAINTENANCE_MODE": {"description": "Start in maintenance", "value": "false"},
+    "CD_DAILY": {"description": "Daily cooldown seconds", "value": "86400"},
+    "CD_ROB": {"description": "Rob cooldown seconds", "value": "1800"},
+    "CD_KILL": {"description": "Kill cooldown seconds", "value": "1800"},
+    "CD_GIVE": {"description": "Give cooldown seconds", "value": "600"},
+    "CD_PROTECT": {"description": "Protect cooldown seconds", "value": "86400"},
+    "CD_REVIVE": {"description": "Revive cooldown seconds", "value": "600"},
+    "CD_BROADCAST": {"description": "Broadcast cooldown seconds", "value": "3600"},
+    "CD_PANEL": {"description": "Panel cooldown seconds", "value": "60"},
+    "BROADCAST_DELAY": {"description": "Delay between broadcast messages", "value": "0.05"},
+    "MAX_RETRY_AFTER": {"description": "RetryAfter cap seconds", "value": "5"},
+    "API_ID": {"description": "Optional Telegram API ID", "required": false},
+    "API_HASH": {"description": "Optional Telegram API HASH", "required": false}
+  },
+  "buildpacks": [{"url": "heroku/python"}]
+}
