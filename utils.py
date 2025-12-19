@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta
-from typing import Iterable, Optional
+from datetime import date, timedelta
 
 from aiogram.types import Message, User as TgUser
 

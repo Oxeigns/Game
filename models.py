@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, date
-from typing import Optional
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
