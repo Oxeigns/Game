@@ -1,121 +1,42 @@
-# Telegram Group Economy Game Bot
+# Premium Telegram Game + Economy + Moderation Bot
 
-Production-ready economy game bot for Telegram groups and DMs using **python-telegram-bot v20+**, **Motor/MongoDB**, and Python 3.11.
+High-end aiogram v3 bot featuring moderation, antiflood, economy, combat, and mini-games with premium Unicode card UI.
 
 ## Features
-- Group economy gameplay: /daily, /rob, /kill, /revive, /protect, /give, /toprich, /topkill, /check, /economy.
-- DM admin panel and broadcasts for owner/sudo.
-- Safe DM handling, cooldowns, maintenance mode, and structured logging to a logs group.
-- Deployable on Heroku (worker dyno) or VPS (systemd).
+- 🛡 Advanced moderation: warns, mutes, bans, purges, rule cards
+- 🚫 Antiflood + filters backed by Redis fallback
+- 💰 Economy with daily rewards, transfers, leaderboards, and transactions
+- ⚔️ Combat mini-system: rob, kill, revive, protect, top killers
+- 🎮 Mini games: truth/dare, puzzles, riddles, couples
+- 🎭 Fun actions with premium cards
+- 🧰 Admin panel preview card and command setup for groups/private
+- JSON structured logging
 
-## Requirements
-- Python 3.11+
-- MongoDB (Atlas recommended)
-- Environment variables configured (see `.env.example`).
+## Tech Stack
+- Python 3.11+, aiogram v3
+- SQLAlchemy async + PostgreSQL (dev SQLite fallback)
+- Redis for cooldowns/antiflood (memory fallback)
+- Alembic ready models
 
-## Setup (Local)
-1. Clone the repo and create env file:
+## Quickstart
+1. Copy `.env.example` to `.env` and set `BOT_TOKEN`.
+2. Install dependencies:
    ```bash
-   cp .env.example .env
-   # edit .env with BOT_TOKEN, MONGO_URI, DB_NAME, OWNER_ID, LOGS_GROUP_ID
-   ```
-2. Create virtual env & install:
-   ```bash
-   python3.11 -m venv venv
-   source venv/bin/activate
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
-3. Run bot:
+3. Initialize database (SQLite dev default):
    ```bash
-   python -m bot.app
+   python -m bot.main
    ```
+4. For production with Postgres/Redis, update `DATABASE_URL` and `REDIS_URL` in `.env`.
 
-## Heroku Deployment (Polling)
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Oxeigns/Game)
-1. Install Heroku CLI and login.
-2. Create app and set config vars:
-   ```bash
-   heroku create
-   heroku config:set BOT_TOKEN=<token>
-   heroku config:set MONGO_URI=<mongo_uri>
-   heroku config:set DB_NAME=<db_name>
-   heroku config:set OWNER_ID=<owner_id>
-   heroku config:set LOGS_GROUP_ID=<optional logs chat id>
-   ```
-3. Deploy:
-   ```bash
-   git add .
-   git commit -m "Deploy bot"
-   git push heroku work:main
-   ```
-4. Scale worker dyno:
-   ```bash
-   heroku ps:scale worker=1
-   ```
+## Docker Compose
+`docker-compose.yml` provisions Postgres + Redis.
 
-## VPS Deployment (systemd + polling)
-1. Install Python 3.11 and create a user `bot`.
-2. Clone repo to `/opt/gamebot` and create `.env` (see example).
-3. Create venv & install:
-   ```bash
-   cd /opt/gamebot
-   python3.11 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-4. Create systemd unit `/etc/systemd/system/gamebot.service` from `systemd.service.example`, adjust paths/user.
-5. Enable and start:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable gamebot.service
-   sudo systemctl start gamebot.service
-   sudo systemctl status gamebot.service
-   ```
-6. Logs: `journalctl -u gamebot.service -f`.
+## Systemd
+See `systemd.service.example` for a service template.
 
-## Database Indexes
-Indexes are created automatically at startup in `db.create_indexes()`:
-- users: user_id (unique), balance desc, kills desc, premium
-- groups: group_id (unique)
-- tx_logs: timestamp desc, (group_id,timestamp), (from_user,timestamp), (to_user,timestamp)
-- bot_settings: _id unique
-- groups_registry: group_id unique
-- broadcast_jobs: job_id unique, status, started_at desc
-
-## Safety Notes
-- Cooldowns enforced per user per command.
-- DM attempts are skipped if `dm_enabled` is false; on DM failure flag is disabled.
-- Broadcasts throttle at 20 msg/sec and handle RetryAfter with capped wait.
-- Maintenance mode blocks all non-superuser commands.
-
-## BotFather Commands
-```
-start - Enable DM notifications
-daily - Claim daily reward
-rob - Rob a replied user (group only)
-kill - Kill a replied user (group only)
-revive - Revive self or replied user
-protect - Enable protection
-give - Give money to replied user
-toprich - Top richest users
-topkill - Top killers
-check - Check protection (premium only)
-economy - Toggle economy on/off (admins)
-panel - Owner/Sudo control panel (DM)
-broadcast_groups - Broadcast to all groups (owner/sudo, DM)
-broadcast_users - Broadcast to DM users (owner/sudo, DM)
-broadcast_all - Broadcast to groups + users (owner/sudo, DM)
-sudo_add - Add sudo user (owner, DM)
-sudo_remove - Remove sudo user (owner, DM)
-sudo_list - List sudo users (owner, DM)
-set_logs - Set logs group id (owner, DM)
-get_logs - Get logs group id (owner, DM)
-maintenance - Toggle maintenance mode (owner, DM)
-```
-
-## Notes on Broadcasting & DMs
-- Broadcast jobs stored in `broadcast_jobs`; failures counted and DM users auto-disabled on Forbidden.
-- DM notifications only sent when `dm_enabled=true`; set via /start in DM.
-
-## Running
-`python -m bot.app`
+## Data
+Sample data for truth/dare/puzzles/riddles/badwords live in `bot/data/`.

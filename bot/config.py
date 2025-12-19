@@ -1,50 +1,56 @@
-import os
-from typing import List
+"""Bot configuration using pydantic settings."""
+from __future__ import annotations
 
-from dotenv import load_dotenv
+from functools import lru_cache
+from pathlib import Path
+from typing import Optional
 
-load_dotenv()
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-MONGO_URI = os.getenv("MONGO_URI", "")
-DB_NAME = os.getenv("DB_NAME", "telegram_bot")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-LOGS_GROUP_ID = int(os.getenv("LOGS_GROUP_ID", "0")) or None
-DEFAULT_ECONOMY_ENABLED = os.getenv("DEFAULT_ECONOMY_ENABLED", "true").lower() == "true"
-MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").lower() == "true"
 
-CD_DAILY = int(os.getenv("CD_DAILY", "86400"))
-CD_ROB = int(os.getenv("CD_ROB", "1800"))
-CD_KILL = int(os.getenv("CD_KILL", "1800"))
-CD_GIVE = int(os.getenv("CD_GIVE", "600"))
-CD_PROTECT = int(os.getenv("CD_PROTECT", "86400"))
-CD_REVIVE = int(os.getenv("CD_REVIVE", "600"))
-CD_BROADCAST = int(os.getenv("CD_BROADCAST", "3600"))
-CD_PANEL = int(os.getenv("CD_PANEL", "60"))
+class LoggingConfig(BaseModel):
+    level: str = Field(default="INFO")
+    json: bool = Field(default=True)
 
-COOLDOWNS = {
-    "daily": CD_DAILY,
-    "rob": CD_ROB,
-    "kill": CD_KILL,
-    "give": CD_GIVE,
-    "protect": CD_PROTECT,
-    "revive": CD_REVIVE,
-    "broadcast": CD_BROADCAST,
-    "panel": CD_PANEL,
-}
 
-# Broadcast throttling (seconds)
-BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=('.env', '.env.local'), extra="ignore")
 
-# RetryAfter max wait safeguard
-MAX_RETRY_AFTER = int(os.getenv("MAX_RETRY_AFTER", "5"))
+    bot_token: str = Field(alias="BOT_TOKEN")
+    admin_ids: list[int] = Field(default_factory=list, alias="ADMIN_IDS")
 
-SUDO_USERS: List[int] = []
-if os.getenv("SUDO_USERS"):
-    try:
-        SUDO_USERS = [int(x) for x in os.getenv("SUDO_USERS", "").split(",") if x.strip()]
-    except ValueError:
-        SUDO_USERS = []
+    database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
+    redis_url: Optional[str] = Field(default=None, alias="REDIS_URL")
 
-TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
+    use_dev_sqlite: bool = Field(default=True, alias="DEV_SQLITE", description="Use SQLite fallback when DATABASE_URL is absent")
+    sqlite_path: Path = Field(default=Path("./data/dev.sqlite"))
 
+    flood_limit_default: int = Field(default=6)
+    flood_window_seconds: int = Field(default=10)
+
+    max_warns_default: int = Field(default=3)
+    warn_action_default: str = Field(default="mute")
+    mute_time_default: int = Field(default=3600)
+
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @property
+    def resolved_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        if self.use_dev_sqlite:
+            return f"sqlite+aiosqlite:///{self.sqlite_path}"
+        raise RuntimeError("DATABASE_URL not provided and DEV_SQLITE disabled")
+
+    @property
+    def resolved_redis_url(self) -> str:
+        return self.redis_url or "redis://localhost:6379/0"
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
