@@ -38,6 +38,7 @@ from utils import (
     cooldown_guard,
     record_added_group,
     record_removed_group,
+    safe_dm,
 )
 
 
@@ -459,14 +460,14 @@ async def broadcast_entry(update: Update, context: ContextTypes.DEFAULT_TYPE, mo
 
     await update.effective_message.reply_text(f"📢 Broadcast queued (job: {job_id}).")
 
-    await log_event(
-        context,
+    start_log = (
         "📌 EVENT: BROADCAST START\n"
         f"• Time: {fmt_dt(now_utc())}\n"
         f"• Mode: {mode}\n"
         f"• By: {user_doc['user_id']}\n"
-        f"• Job: {job_id}",
+        f"• Job: {job_id}"
     )
+    await log_event(context, start_log)
 
     asyncio.create_task(run_broadcast(context, job_id, mode, text))
 
@@ -491,8 +492,14 @@ async def run_broadcast(context: ContextTypes.DEFAULT_TYPE, job_id: str, mode: s
         except BadRequest:
             failed += 1
         except RetryAfter as e:
-            failed += 1
             await asyncio.sleep(int(e.retry_after) + 1)
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text)
+                sent += 1
+            except Exception:
+                failed += 1
+                if is_user:
+                    await users.update_one({"user_id": chat_id}, {"$set": {"dm_enabled": False}})
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -521,20 +528,21 @@ async def run_broadcast(context: ContextTypes.DEFAULT_TYPE, job_id: str, mode: s
         },
     )
 
-    await log_event(
-        context,
+    summary = (
         "📌 EVENT: BROADCAST FINISH\n"
         f"• Time: {fmt_dt(now_utc())}\n"
         f"• Mode: {mode}\n"
+        f"• Job: {job_id}\n"
         f"• Sent: {sent}\n"
-        f"• Failed: {failed}\n"
-        f"• Job: {job_id}",
+        f"• Failed: {failed}"
     )
+    await log_event(context, summary)
 
-    try:
-        await context.bot.send_message(job["by_user"], text=f"Broadcast complete. Sent: {sent}, Failed: {failed}.")
-    except Exception:
-        pass
+    issuer_id = job.get("by_user")
+    if issuer_id:
+        ok = await safe_dm(context, issuer_id, f"Broadcast complete. Sent: {sent}, Failed: {failed} (job {job_id}).")
+        if not ok:
+            await users.update_one({"user_id": issuer_id}, {"$set": {"dm_enabled": False}})
 
 
 async def broadcast_groups_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
