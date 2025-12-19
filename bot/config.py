@@ -1,59 +1,50 @@
 import os
-from dataclasses import dataclass, field
 from typing import List
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+MONGO_URI = os.getenv("MONGO_URI", "")
+DB_NAME = os.getenv("DB_NAME", "telegram_bot")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+LOGS_GROUP_ID = int(os.getenv("LOGS_GROUP_ID", "0")) or None
+DEFAULT_ECONOMY_ENABLED = os.getenv("DEFAULT_ECONOMY_ENABLED", "true").lower() == "true"
+MAINTENANCE_MODE = os.getenv("MAINTENANCE_MODE", "false").lower() == "true"
 
-def _bool_env(key: str, default: bool = False) -> bool:
-    return os.environ.get(key, str(default)).lower() in {"1", "true", "yes", "on"}
+CD_DAILY = int(os.getenv("CD_DAILY", "86400"))
+CD_ROB = int(os.getenv("CD_ROB", "1800"))
+CD_KILL = int(os.getenv("CD_KILL", "1800"))
+CD_GIVE = int(os.getenv("CD_GIVE", "600"))
+CD_PROTECT = int(os.getenv("CD_PROTECT", "86400"))
+CD_REVIVE = int(os.getenv("CD_REVIVE", "600"))
+CD_BROADCAST = int(os.getenv("CD_BROADCAST", "3600"))
+CD_PANEL = int(os.getenv("CD_PANEL", "60"))
 
+COOLDOWNS = {
+    "daily": CD_DAILY,
+    "rob": CD_ROB,
+    "kill": CD_KILL,
+    "give": CD_GIVE,
+    "protect": CD_PROTECT,
+    "revive": CD_REVIVE,
+    "broadcast": CD_BROADCAST,
+    "panel": CD_PANEL,
+}
 
-def _int_env(key: str, default: int) -> int:
+# Broadcast throttling (seconds)
+BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))
+
+# RetryAfter max wait safeguard
+MAX_RETRY_AFTER = int(os.getenv("MAX_RETRY_AFTER", "5"))
+
+SUDO_USERS: List[int] = []
+if os.getenv("SUDO_USERS"):
     try:
-        return int(os.environ.get(key, default))
+        SUDO_USERS = [int(x) for x in os.getenv("SUDO_USERS", "").split(",") if x.strip()]
     except ValueError:
-        return default
+        SUDO_USERS = []
 
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
 
-def _list_env(key: str) -> List[int]:
-    raw = os.environ.get(key, "")
-    vals = []
-    for item in raw.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        try:
-            vals.append(int(item))
-        except ValueError:
-            continue
-    return vals
-
-
-@dataclass(frozen=True)
-class Settings:
-    bot_token: str = os.environ.get("BOT_TOKEN", "")
-    mongo_uri: str = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-    db_name: str = os.environ.get("DB_NAME", "telegram_economy_bot")
-    default_economy_enabled: bool = _bool_env("DEFAULT_ECONOMY_ENABLED", True)
-
-    owner_id: int = _int_env("OWNER_ID", 0)
-    sudo_users: List[int] = field(default_factory=lambda: _list_env("SUDO_USERS"))
-    logs_group_id: int = _int_env("LOGS_GROUP_ID", 0)
-
-    maintenance_mode: bool = _bool_env("MAINTENANCE_MODE", False)
-
-    # cooldowns in seconds
-    cd_daily: int = _int_env("COOLDOWN_DAILY", 5)
-    cd_rob: int = _int_env("COOLDOWN_ROB", 5)
-    cd_kill: int = _int_env("COOLDOWN_KILL", 5)
-    cd_give: int = _int_env("COOLDOWN_GIVE", 3)
-    cd_protect: int = _int_env("COOLDOWN_PROTECT", 3)
-    cd_revive: int = _int_env("COOLDOWN_REVIVE", 3)
-    cd_broadcast: int = _int_env("COOLDOWN_BROADCAST", 10)
-
-    broadcast_rate_limit: float = float(os.environ.get("BROADCAST_RATE_PER_SEC", 20))
-
-
-SETTINGS = Settings()
