@@ -1,99 +1,98 @@
-import logging
+from __future__ import annotations
 
+import asyncio
+import logging
+import signal
+
+from telegram import Update
+from telegram.constants import ChatType, ParseMode
 from telegram.ext import (
     Application,
-    CommandHandler,
+    ApplicationBuilder,
     CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
 
-from config import SETTINGS
-from db import ensure_indexes
-from handlers import (
-    start_cmd,
-    daily_cmd,
-    rob_cmd,
-    kill_cmd,
-    revive_cmd,
-    protect_cmd,
-    give_cmd,
-    toprich_cmd,
-    topkill_cmd,
-    check_cmd,
-    economy_toggle_cmd,
-    broadcast_groups_cmd,
-    broadcast_users_cmd,
-    broadcast_all_cmd,
-    panel_cmd,
-    panel_router,
-    sudo_add_cmd,
-    sudo_remove_cmd,
-    sudo_list_cmd,
-    set_logs_cmd,
-    get_logs_cmd,
-    maintenance_cmd,
-    my_chat_member,
-    chat_member,
-    handle_message,
-)
+from . import config
+from .db import close_db, create_indexes, ensure_settings, init_db
+from .handlers.callbacks import CALLBACKS
+from .handlers.commands import COMMANDS
+from .services.logging import log_event
+from .services.registry import handle_join_leave
+from .utils import box_card
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    level=logging.INFO,
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
-async def post_init(app: Application):
-    await ensure_indexes()
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.exception("Exception while handling update", exc_info=context.error)
+    try:
+        if config.LOGS_GROUP_ID:
+            await context.bot.send_message(
+                config.LOGS_GROUP_ID,
+                box_card("Error", ["An error occurred", str(context.error)]),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+    except Exception:
+        pass
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                box_card("⚠️", ["Something went wrong. Try again.", "Next: Retry shortly"]),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            pass
 
 
-def main():
-    if not SETTINGS.bot_token:
-        raise SystemExit("BOT_TOKEN is not configured.")
+async def my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await handle_join_leave(update, context)
+    status = update.my_chat_member.new_chat_member.status
+    chat = update.effective_chat
+    if status in ("member", "administrator"):
+        await log_event(context, "Bot Added", update, chat.id, "Bot added to group")
+    elif status in ("left", "kicked"):
+        await log_event(context, "Bot Removed", update, chat.id, "Bot removed from group")
 
-    app = (
-        Application.builder()
-        .token(SETTINGS.bot_token)
-        .post_init(post_init)
-        .parse_mode("HTML")
-        .build()
-    )
 
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("daily", daily_cmd))
-    app.add_handler(CommandHandler("rob", rob_cmd))
-    app.add_handler(CommandHandler("kill", kill_cmd))
-    app.add_handler(CommandHandler("revive", revive_cmd))
-    app.add_handler(CommandHandler("protect", protect_cmd))
-    app.add_handler(CommandHandler("give", give_cmd))
-    app.add_handler(CommandHandler("toprich", toprich_cmd))
-    app.add_handler(CommandHandler("topkill", topkill_cmd))
-    app.add_handler(CommandHandler("check", check_cmd))
-    app.add_handler(CommandHandler("economy", economy_toggle_cmd))
+async def main():
+    if not config.BOT_TOKEN or not config.MONGO_URI:
+        raise RuntimeError("BOT_TOKEN and MONGO_URI required")
+    init_db()
+    await ensure_settings(config.OWNER_ID, config.SUDO_USERS, config.MAINTENANCE_MODE, config.LOGS_GROUP_ID)
+    await create_indexes()
 
-    app.add_handler(CommandHandler("broadcast_groups", broadcast_groups_cmd))
-    app.add_handler(CommandHandler("broadcast_users", broadcast_users_cmd))
-    app.add_handler(CommandHandler("broadcast_all", broadcast_all_cmd))
+    application = ApplicationBuilder().token(config.BOT_TOKEN).concurrent_updates(True).build()
 
-    app.add_handler(CommandHandler("panel", panel_cmd))
-    app.add_handler(CallbackQueryHandler(panel_router, pattern="^(panel:|groups:page:)"))
+    for handler in COMMANDS:
+        application.add_handler(handler)
+    for cb in CALLBACKS:
+        application.add_handler(cb)
+    application.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, my_chat_member))
 
-    app.add_handler(CommandHandler("sudo_add", sudo_add_cmd))
-    app.add_handler(CommandHandler("sudo_remove", sudo_remove_cmd))
-    app.add_handler(CommandHandler("sudo_list", sudo_list_cmd))
-    app.add_handler(CommandHandler("set_logs", set_logs_cmd))
-    app.add_handler(CommandHandler("get_logs", get_logs_cmd))
-    app.add_handler(CommandHandler("maintenance", maintenance_cmd))
+    application.add_error_handler(error_handler)
 
-    app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.add_handler(CommandHandler("groups", panel_cmd))
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
 
-    app.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, my_chat_member))
-    app.add_handler(MessageHandler(filters.StatusUpdate.CHAT_MEMBER, chat_member))
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop_event.set)
 
-    app.run_polling(allowed_updates=["message", "chat_member", "my_chat_member", "callback_query"])
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+
+    await stop_event.wait()
+
+    await application.updater.stop()
+    await application.stop()
+    await application.shutdown()
+    await close_db()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

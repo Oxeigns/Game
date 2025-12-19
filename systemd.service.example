@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Economy Game Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gamebot
+EnvironmentFile=/opt/gamebot/.env
+ExecStart=/opt/gamebot/venv/bin/python bot/app.py
+Restart=always
+RestartSec=5
+User=bot
+
+[Install]
+WantedBy=multi-user.target
