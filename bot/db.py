@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import OperationFailure
 
 from . import config
 
@@ -27,36 +28,47 @@ def get_db():
 
 async def create_indexes():
     database = get_db()
+    async def create_index_safe(collection, keys, **kwargs):
+        try:
+            return await collection.create_index(keys, **kwargs)
+        except OperationFailure as exc:
+            if exc.code in {68, 85, 86} or "already exists" in str(exc):
+                return None
+            raise
+
     await asyncio.gather(
-        database.users.create_index("user_id", unique=True),
-        database.users.create_index("balance", name="balance_desc", sort=[("balance", -1)]),
-        database.users.create_index("kills", name="kills_desc", sort=[("kills", -1)]),
-        database.users.create_index("premium"),
-        database.groups.create_index("group_id", unique=True),
-        database.tx_logs.create_index("timestamp", name="ts_desc", sort=[("timestamp", -1)]),
-        database.tx_logs.create_index(
+        create_index_safe(database.users, [("user_id", 1)], unique=True),
+        create_index_safe(database.users, [("balance", -1)], name="balance_desc"),
+        create_index_safe(database.users, [("kills", -1)], name="kills_desc"),
+        create_index_safe(database.users, [("premium", 1)]),
+        create_index_safe(database.groups, [("group_id", 1)], unique=True),
+        create_index_safe(database.tx_logs, [("timestamp", -1)], name="ts_desc"),
+        create_index_safe(
+            database.tx_logs,
             [
                 ("group_id", 1),
                 ("timestamp", -1),
-            ]
+            ],
         ),
-        database.tx_logs.create_index(
+        create_index_safe(
+            database.tx_logs,
             [
                 ("from_user", 1),
                 ("timestamp", -1),
-            ]
+            ],
         ),
-        database.tx_logs.create_index(
+        create_index_safe(
+            database.tx_logs,
             [
                 ("to_user", 1),
                 ("timestamp", -1),
-            ]
+            ],
         ),
-        database.bot_settings.create_index("_id", unique=True),
-        database.groups_registry.create_index("group_id", unique=True),
-        database.broadcast_jobs.create_index("job_id", unique=True),
-        database.broadcast_jobs.create_index("status"),
-        database.broadcast_jobs.create_index("started_at", name="started_desc", sort=[("started_at", -1)]),
+        create_index_safe(database.bot_settings, [("_id", 1)], unique=True),
+        create_index_safe(database.groups_registry, [("group_id", 1)], unique=True),
+        create_index_safe(database.broadcast_jobs, [("job_id", 1)], unique=True),
+        create_index_safe(database.broadcast_jobs, [("status", 1)]),
+        create_index_safe(database.broadcast_jobs, [("started_at", -1)], name="started_desc"),
     )
 
 
