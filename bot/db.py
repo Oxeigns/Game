@@ -29,6 +29,11 @@ def get_db():
 async def create_indexes():
     database = get_db()
     async def create_index_safe(collection, keys, **kwargs):
+        # MongoDB automatically manages the _id index; attempting to recreate it with
+        # additional options (like unique=True) causes an OperationFailure on recent
+        # server versions.
+        if keys and keys[0][0] == "_id":
+            return None
         try:
             return await collection.create_index(keys, **kwargs)
         except OperationFailure as exc:

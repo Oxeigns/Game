@@ -10,10 +10,9 @@ from telegram.ext import (
     Application,
     ApplicationBuilder,
     CallbackQueryHandler,
+    ChatMemberHandler,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
 
 from . import config
@@ -72,7 +71,7 @@ async def main():
         application.add_handler(handler)
     for cb in CALLBACKS:
         application.add_handler(cb)
-    application.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, my_chat_member))
+    application.add_handler(ChatMemberHandler(my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 
     application.add_error_handler(error_handler)
 
