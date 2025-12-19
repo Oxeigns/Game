@@ -1,7 +1,7 @@
 {
   "name": "Telegram Group Economy Game Bot",
   "description": "Async python-telegram-bot economy game with MongoDB and admin panel.",
-  "repository": "https://example.com/repo",
+  "repository": "https://github.com/Oxeigns/Game",
   "keywords": ["telegram", "bot", "economy", "game", "python"],
   "env": {
     "BOT_TOKEN": {"description": "Telegram bot token", "required": true},
