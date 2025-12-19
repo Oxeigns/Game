@@ -6,7 +6,7 @@ from aiogram.enums import ParseMode
 
 from config import get_settings
 from db import init_db
-from handlers import basic, clans, leaderboards, relationships, social, stats
+from handlers import basic, clans, gifts, leaderboards, relationships, social, stats
 from scheduler import leaderboard_scheduler
 
 
@@ -21,6 +21,7 @@ async def main():
     dp.include_router(relationships.router)
     dp.include_router(clans.router)
     dp.include_router(leaderboards.router)
+    dp.include_router(gifts.router)
     dp.include_router(basic.router)
     asyncio.create_task(leaderboard_scheduler(bot))
     await dp.start_polling(bot)

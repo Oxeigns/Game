@@ -1,165 +1,210 @@
+from __future__ import annotations
+
 import enum
-from datetime import datetime
+from datetime import datetime, date
+from typing import Optional
+
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
     String,
     UniqueConstraint,
-    Index,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 
-from db import Base
-
-
-class RelationshipType(str, enum.Enum):
-    LOVER = "lover"
-    SON = "son"
+Base = declarative_base()
 
 
-class RequestType(str, enum.Enum):
+class RequestType(enum.Enum):
     KISS = "kiss"
     LOVER = "lover"
     SON = "son"
 
 
-class RequestStatus(str, enum.Enum):
+class RequestStatus(enum.Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     DECLINED = "declined"
+    EXPIRED = "expired"
+
+
+class RelationshipType(enum.Enum):
+    LOVER = "lover"
+    PARENT = "parent"
+    CHILD = "child"
+
+
+class ClanRole(enum.Enum):
+    LEADER = "leader"
+    CO_LEADER = "coleader"
+    MEMBER = "member"
 
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
-    username = Column(String(64))
-    first_name = Column(String(128))
+    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    points = Column(Integer, default=0, nullable=False)
+    total_messages = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    stats = relationship("UserGroupStats", back_populates="user", cascade="all, delete-orphan")
+    memberships = relationship("ClanMember", back_populates="user")
 
 
 class Group(Base):
     __tablename__ = "groups"
 
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
-    title = Column(String(255))
+    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    title = Column(String, nullable=False)
     leaderboard_enabled = Column(Boolean, default=True, nullable=False)
-    message_count = Column(Integer, default=0, nullable=False)
+    total_messages = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    stats = relationship("UserGroupStats", back_populates="group", cascade="all, delete-orphan")
-    clans = relationship("Clan", back_populates="group", cascade="all, delete-orphan")
 
 
-class UserGroupStats(Base):
-    __tablename__ = "user_group_stats"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
-    points = Column(Integer, default=0, nullable=False)
-    message_count = Column(Integer, default=0, nullable=False)
-    hugs = Column(Integer, default=0, nullable=False)
-    kisses = Column(Integer, default=0, nullable=False)
-    punches = Column(Integer, default=0, nullable=False)
-    bites = Column(Integer, default=0, nullable=False)
-    dares = Column(Integer, default=0, nullable=False)
-    last_action_at = Column(DateTime)
-
-    user = relationship("User", back_populates="stats")
-    group = relationship("Group", back_populates="stats")
-    clan_member = relationship("ClanMember", back_populates="stats", uselist=False)
-
+class UserGroup(Base):
+    __tablename__ = "user_groups"
     __table_args__ = (UniqueConstraint("user_id", "group_id", name="uq_user_group"),)
 
-
-class Relationship(Base):
-    __tablename__ = "relationships"
-
     id = Column(Integer, primary_key=True)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    target_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    type = Column(Enum(RelationshipType), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    message_count = Column(Integer, default=0, nullable=False)
 
-    __table_args__ = (UniqueConstraint("group_id", "user_id", "type", name="uq_relationship"),)
+    user = relationship("User")
+    group = relationship("Group")
 
 
-class RelationshipRequest(Base):
-    __tablename__ = "relationship_requests"
+class DailyActivity(Base):
+    __tablename__ = "daily_activity"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_user_day"),)
 
     id = Column(Integer, primary_key=True)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
-    requester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    target_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    type = Column(Enum(RequestType), nullable=False)
-    status = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint("group_id", "requester_id", "target_id", "type", name="uq_request"),
-    )
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day = Column(Date, nullable=False)
+    count = Column(Integer, default=0, nullable=False)
 
 
 class Clan(Base):
     __tablename__ = "clans"
 
     id = Column(Integer, primary_key=True)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
-    name = Column(String(64), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    name = Column(String, unique=True, nullable=False)
+    leader_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    coleader_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    score = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    last_bonus_at = Column(DateTime)
 
-    group = relationship("Group", back_populates="clans")
-    members = relationship("ClanMember", back_populates="clan", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint("group_id", "name", name="uq_clan_name_group"),
-        Index("idx_clan_group", "group_id"),
-    )
+    leader = relationship("User", foreign_keys=[leader_id])
+    coleader = relationship("User", foreign_keys=[coleader_id])
+    members = relationship("ClanMember", back_populates="clan")
+    settings = relationship("ClanSettings", back_populates="clan", uselist=False)
 
 
 class ClanMember(Base):
     __tablename__ = "clan_members"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_clan_member_user"),)
 
     id = Column(Integer, primary_key=True)
     clan_id = Column(Integer, ForeignKey("clans.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
-    stats_id = Column(Integer, ForeignKey("user_group_stats.id", ondelete="CASCADE"), nullable=False)
+    role = Column(Enum(ClanRole), default=ClanRole.MEMBER, nullable=False)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     clan = relationship("Clan", back_populates="members")
-    stats = relationship("UserGroupStats", back_populates="clan_member")
-
-    __table_args__ = (
-        UniqueConstraint("group_id", "user_id", name="uq_member_group"),
-        Index("idx_member_clan", "clan_id"),
-    )
+    user = relationship("User", back_populates="memberships")
 
 
-class SocialActionLog(Base):
-    __tablename__ = "social_action_logs"
+class ClanSettings(Base):
+    __tablename__ = "clan_settings"
+
+    id = Column(Integer, primary_key=True)
+    clan_id = Column(Integer, ForeignKey("clans.id", ondelete="CASCADE"), unique=True, nullable=False)
+    min_join_points = Column(Integer, default=0, nullable=False)
+    leader_cooldown_until = Column(DateTime, nullable=True)
+
+    clan = relationship("Clan", back_populates="settings")
+
+
+class ClanWeeklyPoints(Base):
+    __tablename__ = "weekly_clan_stats"
+    __table_args__ = (UniqueConstraint("clan_id", "user_id", name="uq_weekly_clan_user"),)
 
     id = Column(Integer, primary_key=True)
     clan_id = Column(Integer, ForeignKey("clans.id", ondelete="CASCADE"), nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    action = Column(String(32), nullable=False)
+    weekly_points = Column(Integer, default=0, nullable=False)
+
+
+class PendingRequest(Base):
+    __tablename__ = "pending_requests"
+
+    id = Column(Integer, primary_key=True)
+    requester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    target_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    type = Column(Enum(RequestType), nullable=False)
+    status = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class Relationship(Base):
+    __tablename__ = "relationships"
+    __table_args__ = (UniqueConstraint("user_id", "target_id", "type", name="uq_relationship"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    target_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    type = Column(Enum(RelationshipType), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    __table_args__ = (
-        Index("idx_action_window", "clan_id", "group_id", "created_at"),
-    )
+
+class Gift(Base):
+    __tablename__ = "gifts"
+
+    key = Column(String, primary_key=True)
+    emoji = Column(String, nullable=False)
+    price = Column(Integer, nullable=False)
+    bonus_points = Column(Integer, default=0, nullable=False)
+
+
+class GiftHistory(Base):
+    __tablename__ = "gift_history"
+
+    id = Column(Integer, primary_key=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    gift_key = Column(String, ForeignKey("gifts.key"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+__all__ = [
+    "Base",
+    "User",
+    "Group",
+    "UserGroup",
+    "DailyActivity",
+    "Clan",
+    "ClanMember",
+    "ClanSettings",
+    "ClanWeeklyPoints",
+    "PendingRequest",
+    "Relationship",
+    "RelationshipType",
+    "RequestStatus",
+    "RequestType",
+    "ClanRole",
+    "Gift",
+    "GiftHistory",
+]

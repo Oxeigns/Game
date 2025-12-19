@@ -1,1 +1,1 @@
-from . import basic, clans, leaderboards, relationships, social, stats  # noqa: F401
+from . import basic, clans, gifts, leaderboards, relationships, social, stats  # noqa: F401
