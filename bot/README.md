@@ -22,13 +22,21 @@ LOGS_GROUP_ID=0
 DEFAULT_ECONOMY_ENABLED=true
 MAINTENANCE_MODE=false
 BROADCAST_RATE_PER_SEC=20
+COOLDOWN_DAILY=5
+COOLDOWN_ROB=5
+COOLDOWN_KILL=5
+COOLDOWN_GIVE=3
+COOLDOWN_PROTECT=3
+COOLDOWN_REVIVE=3
+COOLDOWN_BROADCAST=10
 ```
 
 ## Setup (local)
 1. Install Python 3.11+ and MongoDB.
 2. Create and activate a virtual environment.
 3. Install dependencies: `pip install -r requirements.txt`.
-4. Run the bot: `python app.py`.
+4. Apply the configuration file `.env`.
+5. Run the bot: `python app.py`.
 
 ## Production deployment (systemd example)
 ```
