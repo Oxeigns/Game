@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from aiogram import Router, types
 from aiogram.filters import Command
-from aiogram.types import FSInputFile
 
 from bot.keys.home import main_menu
 from bot.utils.cards import render_card
+from bot.utils.images import send_photo_with_retry
 
 router = Router()
 
@@ -21,8 +21,13 @@ async def cmd_start(message: types.Message):
         ],
         footer="Use the menu below to explore.",
     )
-    photo = FSInputFile("assets/start.jpg")
-    await message.answer_photo(photo=photo, caption=caption, reply_markup=main_menu(), parse_mode="Markdown")
+    await send_photo_with_retry(
+        message,
+        "assets/start.jpg",
+        caption=caption,
+        reply_markup=main_menu(),
+        parse_mode="Markdown",
+    )
 
 
 @router.message(Command("help"))
