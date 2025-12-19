@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from .. import config
 from ..db import get_db
-from ..utils import box_card, format_time, safe_mention
+from ..utils import box_card, format_time, safe_mention, send_dm_safe
 
 
 async def send_log(context: ContextTypes.DEFAULT_TYPE, title: str, lines: list[str]):
@@ -16,7 +16,7 @@ async def send_log(context: ContextTypes.DEFAULT_TYPE, title: str, lines: list[s
     if not logs_chat:
         return
     text = box_card(title, lines)
-    await context.bot.send_message(logs_chat, text, disable_web_page_preview=True, parse_mode="Markdown")
+    await send_dm_safe(logs_chat, context, text)
 
 
 async def log_event(context: ContextTypes.DEFAULT_TYPE, event_type: str, update: Optional[Update], group_id: Optional[int], details: str):

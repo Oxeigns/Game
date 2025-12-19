@@ -10,7 +10,7 @@ from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, Time
 from telegram.ext import ContextTypes
 
 from . import config
-from .services.ui import box_card, action_keyboard
+from .services.ui import action_keyboard, box_card
 
 
 def format_money(amount: int) -> str:
@@ -34,19 +34,37 @@ async def safe_reply(
 ):
     try:
         if edit and update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+            await update.callback_query.edit_message_text(
+                text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN
+            )
         else:
-            await update.effective_message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+            await update.effective_message.reply_text(
+                text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN
+            )
     except RetryAfter as e:
         await asyncio.sleep(min(e.retry_after, config.MAX_RETRY_AFTER))
         try:
             if edit and update.callback_query:
-                await update.callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+                await update.callback_query.edit_message_text(
+                    text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN
+                )
             else:
-                await update.effective_message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+                await update.effective_message.reply_text(
+                    text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN
+                )
         except Exception:
             return
-    except (Forbidden, BadRequest, TimedOut, NetworkError):
+    except BadRequest as e:
+        if "message is not modified" in str(e).lower():
+            return
+        if edit and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN
+                )
+            except Exception:
+                return
+    except (Forbidden, TimedOut, NetworkError):
         return
 
 
@@ -61,9 +79,11 @@ async def send_dm_safe(user_id: int, context: ContextTypes.DEFAULT_TYPE, text: s
             return True
         except Exception:
             return False
-    except (Forbidden, BadRequest):
+    except BadRequest as e:
+        if "message is not modified" in str(e).lower() or "chat not found" in str(e).lower():
+            return False
         return False
-    except (TimedOut, NetworkError):
+    except (Forbidden, TimedOut, NetworkError):
         return False
 
 
