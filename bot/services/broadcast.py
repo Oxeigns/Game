@@ -6,30 +6,17 @@ from datetime import datetime
 from typing import Iterable
 
 from telegram import Update
-from telegram.error import RetryAfter, Forbidden, BadRequest, NetworkError
+from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter
 from telegram.ext import ContextTypes
 
 from .. import config
 from ..db import get_db
 from ..models import default_broadcast_job
-from ..utils import box_card
+from ..utils import box_card, send_dm_safe
 
 
 async def _send_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
-    try:
-        await context.bot.send_message(chat_id, text, parse_mode="Markdown")
-        return True
-    except RetryAfter as e:
-        await asyncio.sleep(min(e.retry_after, config.MAX_RETRY_AFTER))
-        try:
-            await context.bot.send_message(chat_id, text, parse_mode="Markdown")
-            return True
-        except Exception:
-            return False
-    except (Forbidden, BadRequest):
-        return False
-    except NetworkError:
-        return False
+    return await send_dm_safe(chat_id, context, text)
 
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: str, text: str):

@@ -5,6 +5,11 @@ from datetime import datetime
 from typing import Callable, Awaitable
 
 from telegram import Update
+import functools
+from datetime import datetime
+from typing import Awaitable, Callable
+
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from .. import config

@@ -5,6 +5,11 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional
 
+import math
+import random
+from datetime import datetime, timedelta
+from typing import Optional
+
 from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
