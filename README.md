@@ -27,7 +27,7 @@ Production-ready economy game bot for Telegram groups and DMs using **python-tel
    ```
 3. Run bot:
    ```bash
-   python bot/app.py
+   python -m bot.app
    ```
 
 ## Heroku Deployment (Polling)
@@ -118,4 +118,4 @@ maintenance - Toggle maintenance mode (owner, DM)
 - DM notifications only sent when `dm_enabled=true`; set via /start in DM.
 
 ## Running
-`python bot/app.py`
+`python -m bot.app`
