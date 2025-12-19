@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import timedelta
 
 from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.types import ChatPermissions
 
-from bot.services import moderation_service
 from bot.db import crud
+from bot.services import moderation_service
 from bot.utils.cards import render_card
+from bot.utils.errors import BotError
+from bot.utils.permissions import ensure_admin, ensure_group_chat, ensure_target_actionable
 from bot.utils.timeparse import parse_time, TimeParseError
 
 router = Router()
@@ -16,14 +19,25 @@ router = Router()
 
 async def _ensure_reply(message: types.Message) -> types.Message:
     if not message.reply_to_message or not message.reply_to_message.from_user:
-        await message.reply("Reply to a user to use this command.")
-        raise RuntimeError
+        raise BotError("Reply to a user to use this command.")
     return message.reply_to_message
+
+
+async def _safe_telegram(call, error_text: str):
+    try:
+        return await call
+    except TelegramForbiddenError:
+        raise BotError("I need the proper admin rights to perform this action.")
+    except TelegramBadRequest:
+        raise BotError(error_text)
 
 
 @router.message(Command("warn"))
 async def cmd_warn(message: types.Message, session):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
+    await ensure_target_actionable(message.bot, message.chat.id, replied.from_user.id)
     reason = message.text.partition(" ")[2].strip() or "No reason"
     count, action = await moderation_service.warn_user(session, message.chat, message.from_user, replied.from_user, reason)
     card = render_card(
@@ -35,15 +49,22 @@ async def cmd_warn(message: types.Message, session):
     if count >= (await moderation_service.get_group_settings(session, message.chat))["max_warns"]:
         if action.value == "mute":
             until = message.date + timedelta(seconds=3600)
-            await message.bot.restrict_chat_member(
-                message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=False), until_date=until
+            await _safe_telegram(
+                message.bot.restrict_chat_member(
+                    message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=False), until_date=until
+                ),
+                "Auto-mute failed. Please check my admin rights.",
             )
         else:
-            await message.bot.ban_chat_member(message.chat.id, replied.from_user.id)
+            await _safe_telegram(
+                message.bot.ban_chat_member(message.chat.id, replied.from_user.id),
+                "Auto-ban failed. Please check my admin rights.",
+            )
 
 
 @router.message(Command("warns"))
 async def cmd_warns(message: types.Message, session):
+    await ensure_group_chat(message)
     target = message.reply_to_message.from_user if message.reply_to_message else message.from_user
     warns = await crud.get_warns(session, message.chat.id, target.id)
     if not warns:
@@ -55,6 +76,8 @@ async def cmd_warns(message: types.Message, session):
 
 @router.message(Command("resetwarns"))
 async def cmd_resetwarns(message: types.Message, session):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
     count = await moderation_service.reset_warns(session, message.chat, replied.from_user.id)
     await message.reply(render_card("✅ Warns reset", [f"Removed: {count}"]))
@@ -62,62 +85,83 @@ async def cmd_resetwarns(message: types.Message, session):
 
 @router.message(Command("mute"))
 async def cmd_mute(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
     parts = message.text.split()
     if len(parts) < 2:
-        await message.reply("Provide duration e.g. 10m")
-        return
+        raise BotError("Provide duration e.g. 10m")
     try:
         delta = parse_time(parts[1])
     except TimeParseError as e:
-        await message.reply(str(e))
-        return
+        raise BotError(str(e))
+    await ensure_target_actionable(message.bot, message.chat.id, replied.from_user.id)
     until = message.date + delta
-    await message.bot.restrict_chat_member(
-        message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=False), until_date=until
+    await _safe_telegram(
+        message.bot.restrict_chat_member(
+            message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=False), until_date=until
+        ),
+        "I could not mute this user.",
     )
     await message.reply(render_card("🔇 Muted", [f"Duration: {parts[1]}"]))
 
 
 @router.message(Command("unmute"))
 async def cmd_unmute(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
-    await message.bot.restrict_chat_member(message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=True))
+    await _safe_telegram(
+        message.bot.restrict_chat_member(message.chat.id, replied.from_user.id, ChatPermissions(can_send_messages=True)),
+        "I could not unmute this user.",
+    )
     await message.reply(render_card("🔊 Unmuted", [replied.from_user.full_name]))
 
 
 @router.message(Command("ban"))
 async def cmd_ban(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
-    await message.bot.ban_chat_member(message.chat.id, replied.from_user.id)
+    await ensure_target_actionable(message.bot, message.chat.id, replied.from_user.id)
+    await _safe_telegram(message.bot.ban_chat_member(message.chat.id, replied.from_user.id), "Unable to ban this user.")
     await message.reply(render_card("🚫 Banned", [replied.from_user.full_name]))
 
 
 @router.message(Command("unban"))
 async def cmd_unban(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Provide user id or username")
-        return
-    target = parts[1]
-    await message.bot.unban_chat_member(message.chat.id, target)
-    await message.reply(render_card("✅ Unbanned", [target]))
+        raise BotError("Provide user id or username")
+    target = parts[1].lstrip("@")
+    target_id = int(target) if target.isdigit() else target
+    await _safe_telegram(message.bot.unban_chat_member(message.chat.id, target_id), "Unable to unban that user.")
+    await message.reply(render_card("✅ Unbanned", [str(target_id)]))
 
 
 @router.message(Command("kick"))
 async def cmd_kick(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     replied = await _ensure_reply(message)
-    await message.bot.ban_chat_member(message.chat.id, replied.from_user.id)
-    await message.bot.unban_chat_member(message.chat.id, replied.from_user.id)
+    await ensure_target_actionable(message.bot, message.chat.id, replied.from_user.id)
+    await _safe_telegram(message.bot.ban_chat_member(message.chat.id, replied.from_user.id), "Unable to kick this user.")
+    await _safe_telegram(message.bot.unban_chat_member(message.chat.id, replied.from_user.id), "Unable to finalize kick.")
     await message.reply(render_card("👢 Kicked", [replied.from_user.full_name]))
 
 
 @router.message(Command("del"))
 async def cmd_del(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     if not message.reply_to_message:
-        await message.reply("Reply to a message to delete it")
-        return
-    await message.bot.delete_message(message.chat.id, message.reply_to_message.message_id)
+        raise BotError("Reply to a message to delete it")
+    await _safe_telegram(
+        message.bot.delete_message(message.chat.id, message.reply_to_message.message_id),
+        "I could not delete that message.",
+    )
     try:
         await message.delete()
     except Exception:
@@ -126,9 +170,10 @@ async def cmd_del(message: types.Message):
 
 @router.message(Command("purge"))
 async def cmd_purge(message: types.Message):
+    await ensure_group_chat(message)
+    await ensure_admin(message)
     if not message.reply_to_message:
-        await message.reply("Reply to a start message to purge")
-        return
+        raise BotError("Reply to a start message to purge")
     start_id = message.reply_to_message.message_id
     end_id = message.message_id
     for msg_id in range(start_id, end_id + 1):
@@ -140,6 +185,7 @@ async def cmd_purge(message: types.Message):
 
 @router.message(Command("rules"))
 async def cmd_rules(message: types.Message, session):
+    await ensure_group_chat(message)
     group = await moderation_service.get_group_settings(session, message.chat)
     rules_text = group.get("rules_text") or "No rules set."
     await message.reply(render_card("📜 Rules", [rules_text]))

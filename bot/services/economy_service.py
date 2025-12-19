@@ -1,12 +1,13 @@
 """Economy system operations."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db import crud
 from bot.db.models import TransactionType
+from bot.utils.errors import BotError
 
 
 class EconomyService:
@@ -21,15 +22,27 @@ class EconomyService:
         await session.commit()
         return user.balance
 
-    async def daily(self, session: AsyncSession, tg_user):
+    async def daily(self, session: AsyncSession, tg_user, spam_limiter=None):
         user = await self.ensure_user(session, tg_user)
-        key = f"daily:{tg_user.id}"
-        if not await self.rate_limiter.hit(key, 24 * 3600):
-            remaining = await self.rate_limiter.remaining(key)
-            raise ValueError(f"Daily already claimed. Wait {remaining/3600:.1f}h")
+        now = datetime.now(timezone.utc)
+        last_claim = user.last_daily_at
+        if last_claim and last_claim.tzinfo is None:
+            last_claim = last_claim.replace(tzinfo=timezone.utc)
+        if last_claim:
+            elapsed = now - last_claim
+            if elapsed < timedelta(hours=24):
+                remaining = timedelta(hours=24) - elapsed
+                hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+                minutes = remainder // 60
+                raise BotError(f"Daily already claimed. Wait {hours}h {minutes}m")
+
+        limiter = spam_limiter or self.rate_limiter
+        if limiter and not await limiter.hit(f"spam:daily:{tg_user.id}", 3):
+            raise BotError("Too many attempts. Please slow down.")
+
         reward = 250
         user.balance += reward
-        user.last_daily_at = datetime.utcnow()
+        user.last_daily_at = now
         await crud.add_transaction(
             session, from_id=None, to_id=user.user_id, amount=reward, tx_type=TransactionType.daily, meta={"daily": True}
         )
@@ -38,11 +51,11 @@ class EconomyService:
 
     async def transfer(self, session: AsyncSession, actor, target, amount: int):
         if amount <= 0:
-            raise ValueError("Amount must be positive")
+            raise BotError("Amount must be positive")
         sender = await self.ensure_user(session, actor)
         recipient = await self.ensure_user(session, target)
         if sender.balance < amount:
-            raise ValueError("Insufficient balance")
+            raise BotError("Insufficient balance")
         sender.balance -= amount
         recipient.balance += amount
         await crud.add_transaction(

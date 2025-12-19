@@ -5,6 +5,7 @@ from aiogram.filters import Command
 
 from bot.services.economy_service import EconomyService
 from bot.utils.cards import render_card
+from bot.utils.errors import BotError
 
 router = Router()
 
@@ -20,30 +21,19 @@ async def cmd_bal(message: types.Message, session):
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message, session, rate_limiter):
     economy_service.rate_limiter = rate_limiter
-    try:
-        reward = await economy_service.daily(session, message.from_user)
-    except Exception as e:
-        await message.reply(str(e))
-        return
-    await message.reply(render_card("🎁 Daily claimed", [f"+{reward} coins"])
-    )
+    reward = await economy_service.daily(session, message.from_user, rate_limiter)
+    await message.reply(render_card("🎁 Daily claimed", [f"+{reward} coins"]))
 
 
 @router.message(Command("give"))
 async def cmd_give(message: types.Message, session):
     if not message.reply_to_message:
-        await message.reply("Reply to a user to transfer.")
-        return
+        raise BotError("Reply to a user to transfer.")
     parts = message.text.split()
     if len(parts) < 2 or not parts[1].isdigit():
-        await message.reply("Provide amount, e.g. /give 100")
-        return
+        raise BotError("Provide amount, e.g. /give 100")
     amount = int(parts[1])
-    try:
-        _, _ = await economy_service.transfer(session, message.from_user, message.reply_to_message.from_user, amount)
-    except Exception as e:
-        await message.reply(str(e))
-        return
+    await economy_service.transfer(session, message.from_user, message.reply_to_message.from_user, amount)
     await message.reply(render_card("💸 Transfer", [f"Sent {amount} to {message.reply_to_message.from_user.full_name}"]))
 
 
