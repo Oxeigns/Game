@@ -1,0 +1,9 @@
+{
+  "owner_username": "https://t.me/oxeign",
+  "owner_id": 123456789,
+  "logs_group_id": -1001234567890,
+  "sudo_users": [111, 222],
+  "panel_image_url": "https://example.com/panel.jpg",
+  "support_username": "https://t.me/oxeign",
+  "bot_name": "Your Bot Name"
+}
