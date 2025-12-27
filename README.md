@@ -49,3 +49,7 @@ Sample data for truth/dare/puzzles/riddles/badwords live in `bot/data/`.
   - `/leaderboard_on` — enable scheduled posts in the group.
   - `/leaderboard_off` — disable scheduled posts.
   - `/leaderboard_now` — trigger an immediate leaderboard snapshot.
+ 
+
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Oxeigns/Game)
+
